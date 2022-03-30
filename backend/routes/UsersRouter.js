@@ -8,6 +8,8 @@ const dotenv = require("dotenv");
 //Libraries : 
 const mongoose = require("mongoose"); //MongoDB
 const Joi = require('Joi');
+const { joiPassword } = require('joi-password');
+
 const { Pool } = require("pg");
 const Postgres = new Pool({ ssl: { rejectUnauthorized: false } });
 //Models:
@@ -24,7 +26,8 @@ function validateUser (req,res,next) {
 
     const schema = Joi.object({
         email : Joi.string().min(1).max(50).required(),
-        password : Joi.string().min(8).max(60).required()
+        password : joiPassword.string().min(6).max(60).minOfNumeric(1).required(),
+        confirmPassword:Joi.string().required().valid(Joi.ref('password')),
     })
 
     const validateUser = schema.validate(user);
@@ -36,6 +39,24 @@ function validateUser (req,res,next) {
     }
 
     req.user = req.body;
+
+    next();
+}
+
+async function checkIfUserAlreadyExists(req,res,next) {
+
+    let user;
+
+    try {
+        user = await UserDB.findOne({email : req.body.email});
+    } catch (error) {
+        console.log(error);
+        return res.status(400).json({error : "A problem occured."})
+    }
+
+    if (user) {
+        return res.status(401).json({error : "this email already has an account. Did you want to login ?"})
+    }
 
     next();
 }
@@ -80,7 +101,7 @@ router.get('/', (req,res)=> {
 
 
 //CCREATE A NEW USER ------------- 
-router.post('/register', validateUser, async (req,res)=> {
+router.post('/register', validateUser,checkIfUserAlreadyExists, async (req,res)=> {
 
 //-------------------------------- POSTGREQSL ----------------------------
     // try {
