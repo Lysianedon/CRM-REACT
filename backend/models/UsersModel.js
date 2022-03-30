@@ -15,9 +15,10 @@ const userScheme = new mongoose.Schema({
     password : {
         type : String,
         required : true,
-		minlength : 1,
+		minlength : 6,
 		maxlength : 100,
-    }
+    },
+    data : [{type : mongoose.Types.ObjectId, ref : "Contact"}],
 }) 
 
 const UserDB = mongoose.model("UserDB", userScheme);
