@@ -25,7 +25,7 @@ function validateUser (req,res,next) {
     let user = req.body;
 
     const schema = Joi.object({
-        email : Joi.string().min(1).max(50).required(),
+        email : Joi.string().regex(/^[^\s@]+@[^\s@]+\.[^\s@]+$/).min(1).max(50).required(),
         password : joiPassword.string().min(6).max(60).minOfNumeric(1).required(),
         confirmPassword:Joi.string().required().valid(Joi.ref('password')),
     })
@@ -63,9 +63,25 @@ async function checkIfUserAlreadyExists(req,res,next) {
 
 async function validateLogin(req,res,next){
 
-    let user;
-    const password = req.body.password;
 
+    const password = req.body.password;
+    let user = req.body;
+
+    //Validating the user's info with Joi : 
+    const schema = Joi.object({
+        email : Joi.string().min(1).max(50).regex(/^[^\s@]+@[^\s@]+\.[^\s@]+$/).required(),
+        password : joiPassword.string().min(6).max(60).minOfNumeric(1).required(),
+    })
+
+    const validateUser = schema.validate(user);
+
+    if (validateUser.error) {
+        return res.status(400).json({
+            message : validateUser.error.details[0].message,
+        })
+    }
+
+    //Checking if the user exists in the database : 
     try {
         user = await UserDB.findOne({email : req.body.email});
     } catch (error) {
@@ -80,7 +96,7 @@ async function validateLogin(req,res,next){
     //Comparing the login's password with the one registered in the user's document:
     const isPasswordValid = await bcrypt.compare(password, user.password);
 
-    //If the password is incorrect, an error message is displayed
+    //If the password is incorrect, an error message is displayed :
     if (!isPasswordValid) {
         return res.status(400).json({
             error: "Email or password incorrect"});
@@ -100,25 +116,9 @@ router.get('/', (req,res)=> {
 })
 
 
-//CCREATE A NEW USER ------------- 
+//CREATE A NEW USER ------------- 
 router.post('/register', validateUser,checkIfUserAlreadyExists, async (req,res)=> {
 
-//-------------------------------- POSTGREQSL ----------------------------
-    // try {
-
-    //     user = await Postgres.query("INSERT INTO users (email, password)VALUES($1,$2)", 
-    //     [req.body.email, req.body.password])
-    // } catch (error) {
-    //     console.log(error);
-    //     return res.status(400).json({message : "A problem occured."}) 
-    // }
-
-    // user = await Postgres.query("SELECT * from users WHERE users.email = $1", [req.body.email]);
-    // // console.log("before::::",user);
-    // user = user.rows;
-    // // console.log("after::::",user);
-
-    //------------------------------- MONGODB -----------------------------
     let user;
     const email = req.body.email;
     const password = req.body.password;
@@ -140,7 +140,7 @@ router.post('/register', validateUser,checkIfUserAlreadyExists, async (req,res)=
 
 //LOG A USER ------------- 
 
-router.post('/login', validateUser, validateLogin, async (req,res)=> {
+router.post('/login', validateLogin, async (req,res)=> {
 
     let user = req.user;
 
@@ -153,13 +153,13 @@ router.post('/login', validateUser, validateLogin, async (req,res)=> {
     }
 
     //Generating a token : 
-    const token = jwt.sign({id : user._id}, process.env.DB_SECRET);
+    const token = jwt.sign({id : user._id}, process.env.DB_SECRET, {expiresIn : "50m"});
 
     //Adding the token to a cookie :
     res.cookie("jwt", token, {httpOnly: true, secure: false});
 
     //Sending the cookie to the user:
-    res.json({success : "Cookie sent !", user})
+    return res.json({success : "Cookie sent !", user})
 })
 
 
