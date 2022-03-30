@@ -45,7 +45,7 @@ function validateContact(req,res,next){
 
     const schema = Joi.object({
         name : Joi.string().min(1).max(30).required(),
-        email : Joi.string().min(1).max(50).required(),
+        email : Joi.string().min(1).max(50).regex(/^[^\s@]+@[^\s@]+\.[^\s@]+$/).required(),
         description : Joi.string().min(1).max(500).required(),
         category : Joi.number().integer().min(1).max(10).strict().required()
 
@@ -64,6 +64,45 @@ function validateContact(req,res,next){
     next();
 }
 
+async function validateContactOptions(req,res,next){
+
+    const updatedContact = req.body;
+
+    const schema = Joi.object({
+        _id : Joi.string().min(1).max(70).required(),
+        name : Joi.string().min(1).max(30),
+        email : Joi.string().min(1).max(50).regex(/^[^\s@]+@[^\s@]+\.[^\s@]+$/),
+        description : Joi.string().min(1).max(500),
+        category : Joi.number().integer().min(1).max(10).strict(),
+
+    })
+
+    const validateContact = schema.validate(updatedContact);
+
+    if (validateContact.error) {
+        return res.status(400).json({
+            message : validateContact.error.details[0].message,
+        })
+    }
+
+    //Checking to see if contact's ID exists in user's DB: if not, the user gets a 404 error:
+    let doesContactExist;
+    try {
+        doesContactExist =  await Contact.findById(updatedContact._id);
+        
+    } catch (error) {
+        return res.status(404).json({error : "Contact ID not found in your contacts' list. Please choose a valid one."})
+    }
+
+    if (!doesContactExist) {
+        return res.status(404).json({error : "Contact ID not found in your contacts' list. Please choose a valid one."})
+    } else {
+        req.updatedContact = updatedContact;
+        req.selectedContact = updatedContact;
+    }
+
+    next();
+}
 
 // ----------------------------------------- ROUTES -----------------------------------------
 //--------------------------- WE ARE IN : localhost:8000/contacts/ --------------------------
@@ -73,7 +112,6 @@ router.get('/', protect, async (req,res)=> {
     let contacts, count;
 
     try {
-        // contacts = await UserDB.findById(req.verifiedUserInfos.id).select("data").populate("Contact");
         contacts = await UserDB.findById(req.verifiedUserInfos.id);
         console.log(contacts);
         contacts = await UserDB.findById(req.verifiedUserInfos.id).populate("data");
@@ -120,16 +158,53 @@ router.post('/', protect, validateContact , async (req,res)=> {
     return res.status(201).json({message : "Contact successfully created !", contact : newContact});
 })
 
-//MODIFY A CONTACT
-//Check ID to see if it exists in the user's list : 
-//Validate contact :
-router.put('/',protect, async (req,res) => {
+//MODIFY A CONTACT --------------------------
 
-    const updatedContact = await Contact.findByIdAndUpdate(req.body.id, req.body)
-    return res.json({success : `contact ID ${updatedContact._id} successfully updated !`, updatedContact})
+router.put('/',protect,validateContactOptions, async (req,res) => {
+
+    const updatedContact = req.updatedContact;
+    let contact;
+
+    try {
+        contact = await Contact.findByIdAndUpdate(updatedContact._id, updatedContact)
+        
+    } catch (error) {
+        console.log(error);
+        return res.status(400).json({error: "A problem happened."})
+    }
+
+    return res.json({success : `contact ID ${contact._id} successfully updated !`, contact})
 
 })
 
+//DELETE A CONTACT -------------------------------
+router.delete('/', protect, validateContactOptions, async (req,res) => {
+
+    let deletedContact = req.selectedContact, user ;
+
+    //Deleting the contact :
+    try {
+        deletedContact = await Contact.findByIdAndDelete(deletedContact._id);
+        user = await UserDB.findById(req.verifiedUserInfos.id).populate("data");
+
+    } catch (error) {
+        console.log(error);
+        return res.status(400).json({error: "A problem happened."}) 
+    }
+
+    //Deleting the ID in the user's doc : 
+    try {
+        await UserDB.findByIdAndUpdate(req.verifiedUserInfos.id, 
+            {
+                $pull : {data : deletedContact._id}
+            })
+        
+    } catch (error) {
+        console.log(error);
+        return res.status(400).json({error: "A problem happened. Failed to update the user's document."}) 
+    }
+    return res.json({success : `contact ID ${deletedContact.email} successfully deleted !`, data : user.data})
+})
 
 
 
