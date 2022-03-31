@@ -137,8 +137,10 @@ async function searchContactsByCriteria(req,res,next){
 
             if (selectedContacts.length === 0) {
                 return res.status(404).json({error : `There is no contacts matching your criteria.`})
+            } else {
+                console.log("exists",selectedContacts[0]);
+                req.selectedContacts = selectedContacts;
             }
-            req.selectedContacts = selectedContacts;
         }
     }
     req.selectedContacts = selectedContacts;
@@ -154,7 +156,7 @@ router.get('/', protect,searchContactsByCriteria, async (req,res)=> {
 
     try {
         contacts = await UserDB.findById(req.verifiedUserInfos.id);
-        console.log(contacts);
+        // console.log(contacts);
         contacts = await UserDB.findById(req.verifiedUserInfos.id).populate("data");
         
     } catch (error) {
@@ -162,8 +164,8 @@ router.get('/', protect,searchContactsByCriteria, async (req,res)=> {
         return res.status(400).json({error : "A problem occured."})
     }
 
-    count = contacts.data.length;
-    return res.json({data : contacts.data, count})
+    count = req.selectedContacts.length;
+    return res.json({data : req.selectedContacts, count})
 })
 
 //CREATE A NEW CONTACT ----------------------
@@ -194,7 +196,7 @@ router.post('/', protect, validateContact , async (req,res)=> {
             );
 
     } catch (error) {
-        return res.status(400).json({error : "A problem occured."})
+        return res.status(400).json({error : "This email contact already exists."})
     }
     return res.status(201).json({message : "Contact successfully created !", contact : newContact});
 })
