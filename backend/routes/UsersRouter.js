@@ -18,6 +18,8 @@ const UserDB = require('../models/UsersModel');
 dotenv.config({
 	path: "../config.env",
 });
+//Import middlewares
+const protect = require('../middlewares/Protect');
 // ------------------------------------ MIDDLEWARES -----------------------------------------
 
 function validateUser (req,res,next) {
@@ -62,8 +64,6 @@ async function checkIfUserAlreadyExists(req,res,next) {
 }
 
 async function validateLogin(req,res,next){
-
-
     const password = req.body.password;
     let user = req.body;
 
@@ -107,29 +107,111 @@ async function validateLogin(req,res,next){
     next();
 }
 
+async function checkIfAdmin(req,res,next){
+
+    //Find user :
+    let user;
+    
+    try {
+        user = await UserDB.findById(req.verifiedUserInfos.id) 
+    } catch (error) {
+        console.log(error);
+        return res.status(400).json({error : "A problem happened."})
+    }
+
+    if (user.isAdmin === false) {
+        return res.status(401).json({error : "Access denied. You must be an admin to access this page."})
+    }
+
+    next();
+}
+
+async function validateID(req,res,next){
+
+    //Validating ID with Joi : 
+    let user, id = req.body.id;
+    const schema = Joi.object({
+        id : joiPassword.string().min(1).max(70).minOfNumeric(1).required(),
+    })
+
+    const validateID = schema.validate(req.body);
+
+    if (validateID.error) {
+        return res.status(400).json({
+            message : validateID.error.details[0].message,
+        })
+    }
+
+    //Checking if ID exists : 
+
+    try {
+        user = await UserDB.findById(id)
+    } catch (error) {
+        // console.log(error);
+        return res.status(400).json({error : "User not found."})
+    }
+
+    if (!user) {
+        return res.status(404).json({error : "User not found."})
+    }
+
+    req.deletedUser = user;
+    next();
+}
+
 
 // ----------------------------------------- ROUTES -----------------------------------------
 //--------------------------- WE ARE IN : localhost:8000/users/ -----------------------------
 
-router.get('/', (req,res)=> {
-    res.send('Hello');
+router.get('/',protect, checkIfAdmin, async (req,res)=> {
+    
+    let usersList;
+    
+    try {
+        usersList = await UserDB.find();
+    
+    } catch (error) {
+        console.log(error);
+        return res.status(400).json({error : "A problem happened."})
+    }
+    
+    return res.json({usersList})
 })
 
+//check if ID exists : 
+
+router.delete('/', protect, checkIfAdmin, validateID, async (req,res)=> {
+
+    let usersList, deletedUser = req.body.id;
+    //Getting the list of users : 
+    try {
+        usersList = await UserDB.find();
+        deletedUser = await UserDB.findByIdAndDelete(deletedUser);
+    
+    } catch (error) {
+        console.log(error);
+        return res.status(400).json({error : "A problem happened."})
+    }
+    usersList = await UserDB.find();
+    return res.json({message : `User ${deletedUser._id} successfully deleted !`, usersList});
+})
 
 //CREATE A NEW USER ------------- 
 router.post('/register', validateUser,checkIfUserAlreadyExists, async (req,res)=> {
 
-    let user;
+    let user, updatedUser;
     const email = req.body.email;
     const password = req.body.password;
 
     //Hashing the password : 
     const hashedPassword = await bcrypt.hash(password, 12);
-    console.log("hashed password: ", hashedPassword);
+    // console.log("hashed password: ", hashedPassword);
 
     try {
         await await UserDB.create({email, password : hashedPassword});
         user = await UserDB.findOne({email});
+        updatedUser = await UserDB.findOneAndUpdate({email}, {isAdmin : false});
+
     } catch (error) {
         console.log(error);
         return res.status(400).json({error: "A problem occured."})
