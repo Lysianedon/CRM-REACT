@@ -104,11 +104,52 @@ async function validateContactOptions(req,res,next){
     next();
 }
 
+// >------- SEARCH CONTACTS BY CRITERIA -----------> 
+
+async function searchContactsByCriteria(req,res,next){
+    
+    let selectedContacts = await UserDB.findById(req.verifiedUserInfos.id).populate("data");
+    //Transforming our mongoose model objects into real JS objects : 
+    selectedContacts =selectedContacts.toObject();
+    selectedContacts = selectedContacts.data;
+
+    //Guard : Checking if the query params exist :
+    if (req.query) {
+        //Adding all of my object keys into an array:
+        const keys = Object.keys(req.query); 
+
+        for (let i = 0; i < keys.length; i++) {
+
+             //The key we are looping over : 
+             let key = keys[i];
+             console.log(key);
+    
+            // if query params doesn't exist, a 404 message is returned : 
+            if (!selectedContacts[0].hasOwnProperty(key)) {
+                return res.status(404).json({error : `The filter "${keys[i]}" doesn't exist.`}) 
+            }
+
+            //Adding the value to req : 
+            req.key = req.query[key];
+
+            //If no contact was found : the function returns a 404 message : 
+            selectedContacts = selectedContacts.filter(contact => contact[key].toString().toLowerCase() === req.query[key].toLowerCase());
+
+            if (selectedContacts.length === 0) {
+                return res.status(404).json({error : `There is no contacts matching your criteria.`})
+            }
+            req.selectedContacts = selectedContacts;
+        }
+    }
+    req.selectedContacts = selectedContacts;
+    next();
+}
+
 // ----------------------------------------- ROUTES -----------------------------------------
 //--------------------------- WE ARE IN : localhost:8000/contacts/ --------------------------
 
 //GET THE USER'S CONTACTS -------------------
-router.get('/', protect, async (req,res)=> {
+router.get('/', protect,searchContactsByCriteria, async (req,res)=> {
     let contacts, count;
 
     try {
