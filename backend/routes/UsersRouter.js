@@ -185,14 +185,23 @@ router.delete('/', protect, checkIfAdmin, validateID, async (req,res)=> {
     let usersList, deletedUser = req.body.id;
     //Getting the list of users : 
     try {
-        usersList = await UserDB.find();
+        deletedUser = await UserDB.findById(deletedUser);
+
+        //If the user is an admin : a 401 error is sent : 
+        if (deletedUser.isAdmin === true) {
+            return res.status(401).json({error : "You cannot delete another admin."}) 
+        }
+        //Deleting the user : 
         deletedUser = await UserDB.findByIdAndDelete(deletedUser);
-    
+        
+        //Getting the updated user's list : 
+        usersList = await UserDB.find();
+        
     } catch (error) {
         console.log(error);
         return res.status(400).json({error : "A problem happened."})
     }
-    usersList = await UserDB.find();
+
     return res.json({message : `User ${deletedUser._id} successfully deleted !`, usersList});
 })
 
